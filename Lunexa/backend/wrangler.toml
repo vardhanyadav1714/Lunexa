@@ -1,0 +1,12 @@
+name = "lunexa-api"
+main = "src/index.ts"
+compatibility_date = "2026-06-16"
+workers_dev = true
+
+[observability]
+enabled = true
+
+[vars]
+JWT_ACCESS_TTL_SECONDS = "900"
+JWT_REFRESH_TTL_SECONDS = "2592000"
+ALLOWED_ORIGIN = "*"
