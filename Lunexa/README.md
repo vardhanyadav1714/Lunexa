@@ -16,6 +16,46 @@ Lunexa helps you track your personal finances with features including:
 - Financial analytics and reporting
 - Secure authentication with email verification
 
+## Screenshots
+
+<div align="center">
+
+### Authentication Flow
+<table>
+  <tr>
+    <td align="center"><b>Sign In / Register</b></td>
+    <td align="center"><b>Email Verification</b></td>
+  </tr>
+  <tr>
+    <td><img src="screenshots/auth_screen.jpeg" alt="Authentication Screen" width="250"/></td>
+    <td><img src="screenshots/email_verification.jpeg" alt="Email Verification" width="250"/></td>
+  </tr>
+</table>
+
+### Main Features
+<table>
+  <tr>
+    <td align="center"><b>Home Dashboard</b></td>
+    <td align="center"><b>Accounts</b></td>
+    <td align="center"><b>Transactions</b></td>
+  </tr>
+  <tr>
+    <td><img src="screenshots/home_dashboard.jpeg" alt="Home Dashboard" width="250"/></td>
+    <td><img src="screenshots/accounts_screen.jpeg" alt="Accounts Screen" width="250"/></td>
+    <td><img src="screenshots/transactions_screen.jpeg" alt="Transactions Screen" width="250"/></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Budget</b></td>
+    <td colspan="2"></td>
+  </tr>
+  <tr>
+    <td><img src="screenshots/budget_screen.jpeg" alt="Budget Screen" width="250"/></td>
+    <td colspan="2"></td>
+  </tr>
+</table>
+
+</div>
+
 ## Architecture
 
 Lunexa follows a modular, Clean Architecture approach:
