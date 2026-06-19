@@ -23,34 +23,29 @@ Lunexa helps you track your personal finances with features including:
 ### Authentication Flow
 <table>
   <tr>
-    <td align="center"><b>Sign In / Register</b></td>
-    <td align="center"><b>Email Verification</b></td>
+    <td align="center"><b>Login Screen</b></td>
+    <td align="center"><b>Register / Email Verification</b></td>
   </tr>
   <tr>
-    <td><img src="screenshots/auth_screen.jpeg" alt="Authentication Screen" width="250"/></td>
-    <td><img src="screenshots/email_verification.jpeg" alt="Email Verification" width="250"/></td>
+    <td><img src="screenshots/login_screen.jpeg" alt="Login Screen" width="250"/></td>
+    <td><img src="screenshots/auth_register_screen.jpeg" alt="Register Screen" width="250"/></td>
   </tr>
 </table>
 
 ### Main Features
 <table>
   <tr>
-    <td align="center"><b>Home Dashboard</b></td>
-    <td align="center"><b>Accounts</b></td>
-    <td align="center"><b>Transactions</b></td>
+    <td align="center"><b>Main Dashboard</b></td>
+    <td align="center"><b>Account Setup</b></td>
+    <td align="center"><b>Expense & Budget</b></td>
   </tr>
   <tr>
-    <td><img src="screenshots/home_dashboard.jpeg" alt="Home Dashboard" width="250"/></td>
-    <td><img src="screenshots/accounts_screen.jpeg" alt="Accounts Screen" width="250"/></td>
-    <td><img src="screenshots/transactions_screen.jpeg" alt="Transactions Screen" width="250"/></td>
+    <td><img src="screenshots/main_dashboard.jpeg" alt="Main Dashboard" width="250"/></td>
+    <td><img src="screenshots/account_setup.jpeg" alt="Account Setup" width="250"/></td>
+    <td><img src="screenshots/expense_budget_dashboard.jpeg" alt="Expense & Budget" width="250"/></td>
   </tr>
   <tr>
-    <td align="center"><b>Budget</b></td>
-    <td colspan="2"></td>
-  </tr>
-  <tr>
-    <td><img src="screenshots/budget_screen.jpeg" alt="Budget Screen" width="250"/></td>
-    <td colspan="2"></td>
+    <td align="center" colspan="3"><i>With automatic token refresh, users stay authenticated seamlessly</i></td>
   </tr>
 </table>
 
