@@ -30,6 +30,10 @@ data class LoginRequest(
     val password: String
 )
 
+data class RefreshTokenRequest(
+    val refreshToken: String
+)
+
 data class StartEmailVerificationRequest(
     val fullName: String,
     val email: String,

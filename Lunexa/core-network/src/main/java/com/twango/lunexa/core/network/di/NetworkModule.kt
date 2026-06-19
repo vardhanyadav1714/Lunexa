@@ -1,5 +1,7 @@
 package com.twango.lunexa.core.network.di
 
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.twango.lunexa.core.network.api.LunexaApiService
 import com.twango.lunexa.core.network.auth.AuthInterceptor
 import dagger.Module
@@ -19,6 +21,10 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    fun provideGson(): Gson = GsonBuilder().create()
+
+    @Provides
+    @Singleton
     fun provideOkHttpClient(authInterceptor: AuthInterceptor): OkHttpClient {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
@@ -32,11 +38,11 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideRetrofit(okHttpClient: OkHttpClient): Retrofit =
+    fun provideRetrofit(okHttpClient: OkHttpClient, gson: Gson): Retrofit =
         Retrofit.Builder()
             .baseUrl(BASE_URL)
             .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
 
     @Provides

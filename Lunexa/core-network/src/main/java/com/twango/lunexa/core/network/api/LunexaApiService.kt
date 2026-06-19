@@ -12,6 +12,7 @@ import com.twango.lunexa.core.network.dto.CreateBudgetRequest
 import com.twango.lunexa.core.network.dto.CreateTransactionRequest
 import com.twango.lunexa.core.network.dto.EmailVerificationPayloadDto
 import com.twango.lunexa.core.network.dto.LoginRequest
+import com.twango.lunexa.core.network.dto.RefreshTokenRequest
 import com.twango.lunexa.core.network.dto.MonthlySummaryDto
 import com.twango.lunexa.core.network.dto.PasswordResetPayloadDto
 import com.twango.lunexa.core.network.dto.RegisterRequest
@@ -32,6 +33,9 @@ interface LunexaApiService {
 
     @POST("auth/login")
     suspend fun login(@Body request: LoginRequest): ApiEnvelope<AuthPayloadDto>
+
+    @POST("auth/refresh")
+    suspend fun refreshToken(@Body request: RefreshTokenRequest): ApiEnvelope<AuthPayloadDto>
 
     @POST("auth/password-reset/start")
     suspend fun startPasswordReset(@Body request: StartPasswordResetRequest): ApiEnvelope<PasswordResetPayloadDto>

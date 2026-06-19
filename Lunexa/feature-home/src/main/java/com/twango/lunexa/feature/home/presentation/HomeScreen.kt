@@ -76,6 +76,7 @@ import kotlin.math.roundToInt
 @Composable
 fun HomeRoute(
     onLoggedOut: () -> Unit,
+    onAuthError: (String) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -87,6 +88,18 @@ fun HomeRoute(
     LaunchedEffect(state.isLoggedOut) {
         if (state.isLoggedOut) {
             onLoggedOut()
+        }
+    }
+
+    // Handle authentication errors
+    LaunchedEffect(state.errorMessage) {
+        val error = state.errorMessage
+        if (error != null && (
+            error.contains("Authentication failed", ignoreCase = true) ||
+            error.contains("401", ignoreCase = true) ||
+            error.contains("unauthorized", ignoreCase = true)
+        )) {
+            onAuthError(error)
         }
     }
 

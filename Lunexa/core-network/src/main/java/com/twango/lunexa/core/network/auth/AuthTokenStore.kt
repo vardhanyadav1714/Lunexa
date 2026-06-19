@@ -18,6 +18,8 @@ class AuthTokenStore @Inject constructor(
 
     fun currentAccessToken(): String? = _accessToken.value
 
+    fun getRefreshToken(): String? = preferences.getString(KEY_REFRESH_TOKEN, null)
+
     fun saveTokens(accessToken: String, refreshToken: String) {
         preferences.edit()
             .putString(KEY_ACCESS_TOKEN, accessToken)
