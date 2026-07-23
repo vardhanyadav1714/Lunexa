@@ -1,6 +1,7 @@
 package com.twango.lunexa.core.network.auth
 
 import android.content.Context
+import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,15 +22,17 @@ class AuthTokenStore @Inject constructor(
     fun getRefreshToken(): String? = preferences.getString(KEY_REFRESH_TOKEN, null)
 
     fun saveTokens(accessToken: String, refreshToken: String) {
-        preferences.edit()
-            .putString(KEY_ACCESS_TOKEN, accessToken)
-            .putString(KEY_REFRESH_TOKEN, refreshToken)
-            .apply()
+        preferences.edit(commit = true) {
+            putString(KEY_ACCESS_TOKEN, accessToken)
+            putString(KEY_REFRESH_TOKEN, refreshToken)
+        }
         _accessToken.value = accessToken
     }
 
     fun clear() {
-        preferences.edit().clear().apply()
+        preferences.edit(commit = true) {
+            clear()
+        }
         _accessToken.value = null
     }
 

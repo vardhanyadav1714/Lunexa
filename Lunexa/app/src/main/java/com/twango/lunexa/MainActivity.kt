@@ -5,13 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -34,25 +31,13 @@ class MainActivity : ComponentActivity() {
             val accessToken by appViewModel.accessToken.collectAsState()
             val authError by appViewModel.authError.collectAsState()
             val navController = rememberNavController()
-            var showAuthError by remember { mutableStateOf<String?>(null) }
 
-            // Handle authentication errors
             LaunchedEffect(authError) {
-                authError?.let { error ->
-                    showAuthError = error
+                authError?.let {
                     appViewModel.clearAuthError()
-                    // Navigate to auth screen
                     navController.navigate(Route.Auth.path) {
                         popUpTo(0) { inclusive = true }
                     }
-                }
-            }
-
-            // Show error snackbar if needed
-            LaunchedEffect(showAuthError) {
-                showAuthError?.let { error ->
-                    // You could show a snackbar here
-                    // For now, the navigation to auth screen is enough
                 }
             }
 

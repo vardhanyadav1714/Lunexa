@@ -5,9 +5,9 @@ import { verifyToken } from "./jwt";
 
 export const requireAuth = createMiddleware<{ Bindings: Env; Variables: AppVariables }>(async (c, next) => {
   const authorization = c.req.header("Authorization");
-  const token = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : null;
+  const [scheme, token] = authorization?.trim().split(/\s+/, 2) ?? [];
 
-  if (!token) {
+  if (scheme?.toLowerCase() !== "bearer" || !token) {
     throw new ApiError(401, "UNAUTHORIZED", "Authentication is required.");
   }
 

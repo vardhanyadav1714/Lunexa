@@ -1,6 +1,7 @@
 package com.twango.lunexa.feature.home.presentation
 
 import com.twango.lunexa.core.network.dto.AccountDto
+import com.twango.lunexa.core.network.dto.BudgetSummaryDto
 import com.twango.lunexa.core.network.dto.CategoryDto
 import com.twango.lunexa.core.network.dto.MonthlySummaryDto
 import com.twango.lunexa.feature.home.data.HomeRepository
@@ -11,7 +12,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -31,7 +32,7 @@ class HomeViewModelTest {
 
     private lateinit var viewModel: HomeViewModel
     private lateinit var repository: HomeRepository
-    private val testDispatcher = StandardTestDispatcher()
+    private val testDispatcher = UnconfinedTestDispatcher()
 
     private val mockAccounts = listOf(
         AccountDto(
@@ -42,7 +43,10 @@ class HomeViewModelTest {
             openingBalance = "1000.00",
             currentBalance = "1500.00",
             isArchived = false,
-            sortOrder = 0
+            sortOrder = 0,
+            createdAt = null,
+            updatedAt = null,
+            version = 1
         ),
         AccountDto(
             id = "acc-2",
@@ -52,8 +56,25 @@ class HomeViewModelTest {
             openingBalance = "10000.00",
             currentBalance = "9500.00",
             isArchived = false,
-            sortOrder = 1
+            sortOrder = 1,
+            createdAt = null,
+            updatedAt = null,
+            version = 1
         )
+    )
+
+    private val createdAccount = AccountDto(
+        id = "acc-new",
+        name = "New Account",
+        type = "CASH",
+        currency = "INR",
+        openingBalance = "5000.00",
+        currentBalance = "5000.00",
+        isArchived = false,
+        sortOrder = 2,
+        createdAt = null,
+        updatedAt = null,
+        version = 1
     )
 
     private val mockCategories = listOf(
@@ -64,7 +85,10 @@ class HomeViewModelTest {
             iconKey = "food",
             colorHex = "#FF5722",
             isDefault = true,
-            sortOrder = 0
+            sortOrder = 0,
+            createdAt = null,
+            updatedAt = null,
+            version = 1
         ),
         CategoryDto(
             id = "cat-2",
@@ -73,22 +97,35 @@ class HomeViewModelTest {
             iconKey = "transport",
             colorHex = "#2196F3",
             isDefault = false,
-            sortOrder = 1
+            sortOrder = 1,
+            createdAt = null,
+            updatedAt = null,
+            version = 1
         )
     )
 
     private val mockSummary = MonthlySummaryDto(
         month = "2025-01",
-        totalIncome = "50000.00",
-        totalExpense = "32000.50",
-        netBalance = "18000.50",
-        transactionCount = 45
+        currency = "INR",
+        incomeTotal = "50000.00",
+        expenseTotal = "32000.50",
+        transferTotal = "0.00",
+        netCashflow = "18000.50",
+        transactionCount = 45,
+        largestExpense = null,
+        budgetSummary = BudgetSummaryDto(
+            budgetedAmount = "40000.00",
+            spentAmount = "32000.50",
+            remainingAmount = "7999.50",
+            utilizationPercent = "80.00"
+        )
     )
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         repository = mockk()
+        every { repository.logout() } returns Unit
         viewModel = HomeViewModel(repository)
     }
 
@@ -163,6 +200,19 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `load selects first active account and first expense category by default`() = runTest {
+        coEvery { repository.accounts() } returns mockAccounts
+        coEvery { repository.expenseCategories() } returns mockCategories
+        coEvery { repository.monthlySummary(any()) } returns mockSummary
+
+        viewModel.load()
+
+        assertEquals("acc-1", viewModel.uiState.value.selectedExpenseAccountId)
+        assertEquals("cat-1", viewModel.uiState.value.selectedExpenseCategoryId)
+        assertEquals("cat-1", viewModel.uiState.value.selectedBudgetCategoryId)
+    }
+
+    @Test
     fun `load sets loading state correctly`() = runTest {
         coEvery { repository.accounts() } coAnswers { delay(100); mockAccounts }
         coEvery { repository.expenseCategories() } returns mockCategories
@@ -207,8 +257,43 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun `createAccount with duplicate active account name shows error and skips repository`() {
+        viewModel.apply {
+            _uiState.value = _uiState.value.copy(accounts = mockAccounts)
+        }
+
+        viewModel.onAccountNameChange("cash")
+        viewModel.onOpeningBalanceChange("5000.00")
+        viewModel.createAccount()
+
+        assertEquals("An account with this name already exists.", viewModel.uiState.value.errorMessage)
+        coVerify(exactly = 0) { repository.createAccount(any(), any()) }
+    }
+
+    @Test
+    fun `createAccount with existing different account succeeds and selects created account`() = runTest {
+        val walletAccount = createdAccount.copy(name = "Wallet")
+        coEvery { repository.createAccount(any(), any()) } returns walletAccount
+        coEvery { repository.accounts() } returns mockAccounts + walletAccount
+        coEvery { repository.expenseCategories() } returns mockCategories
+        coEvery { repository.monthlySummary(any()) } returns mockSummary
+
+        viewModel.apply {
+            _uiState.value = _uiState.value.copy(accounts = mockAccounts)
+        }
+        viewModel.onAccountNameChange("Wallet")
+        viewModel.onOpeningBalanceChange("5000.00")
+        viewModel.createAccount()
+
+        coVerify { repository.createAccount("Wallet", "5000.00") }
+        assertEquals("Account created.", viewModel.uiState.value.message)
+        assertEquals("acc-new", viewModel.uiState.value.selectedExpenseAccountId)
+        assertEquals(mockAccounts + walletAccount, viewModel.uiState.value.accounts)
+    }
+
+    @Test
     fun `createAccount with valid data succeeds`() = runTest {
-        coEvery { repository.createAccount(any(), any()) } returns Unit
+        coEvery { repository.createAccount(any(), any()) } returns createdAccount
         coEvery { repository.accounts() } returns mockAccounts
         coEvery { repository.expenseCategories() } returns mockCategories
         coEvery { repository.monthlySummary(any()) } returns mockSummary
@@ -220,11 +305,13 @@ class HomeViewModelTest {
         coVerify { repository.createAccount("New Account", "5000.00") }
         assertEquals("Account created.", viewModel.uiState.value.message)
         assertNull(viewModel.uiState.value.errorMessage)
+        assertEquals("", viewModel.uiState.value.accountName)
+        assertEquals("", viewModel.uiState.value.openingBalance)
     }
 
     @Test
     fun `createAccount handles negative balance (allowed for opening)`() = runTest {
-        coEvery { repository.createAccount(any(), any()) } returns Unit
+        coEvery { repository.createAccount(any(), any()) } returns createdAccount
         coEvery { repository.accounts() } returns mockAccounts
         coEvery { repository.expenseCategories() } returns mockCategories
         coEvery { repository.monthlySummary(any()) } returns mockSummary
@@ -238,7 +325,7 @@ class HomeViewModelTest {
 
     @Test
     fun `createAccount handles zero balance (allowed)`() = runTest {
-        coEvery { repository.createAccount(any(), any()) } returns Unit
+        coEvery { repository.createAccount(any(), any()) } returns createdAccount
         coEvery { repository.accounts() } returns mockAccounts
         coEvery { repository.expenseCategories() } returns mockCategories
         coEvery { repository.monthlySummary(any()) } returns mockSummary
@@ -344,6 +431,39 @@ class HomeViewModelTest {
             )
         }
         assertEquals("Expense added.", viewModel.uiState.value.message)
+        assertEquals("", viewModel.uiState.value.transactionAmount)
+        assertEquals("", viewModel.uiState.value.merchant)
+        assertEquals("", viewModel.uiState.value.note)
+    }
+
+    @Test
+    fun `createExpense uses selected account and selected category`() = runTest {
+        coEvery { repository.createExpense(any(), any(), any(), any(), any(), any()) } returns Unit
+        coEvery { repository.accounts() } returns mockAccounts
+        coEvery { repository.expenseCategories() } returns mockCategories
+        coEvery { repository.monthlySummary(any()) } returns mockSummary
+
+        viewModel.apply {
+            _uiState.value = _uiState.value.copy(
+                accounts = mockAccounts,
+                categories = mockCategories
+            )
+        }
+        viewModel.onExpenseAccountSelected("acc-2")
+        viewModel.onExpenseCategorySelected("cat-2")
+        viewModel.onTransactionAmountChange("150.50")
+        viewModel.createExpense()
+
+        coVerify {
+            repository.createExpense(
+                accountId = "acc-2",
+                categoryId = "cat-2",
+                amount = "150.50",
+                merchant = "",
+                note = "",
+                transactionDate = any()
+            )
+        }
     }
 
     // ============== Create Budget Tests ==============
@@ -406,11 +526,38 @@ class HomeViewModelTest {
         coVerify {
             repository.createBudget(
                 categoryId = "cat-1",
-                periodMonth = matches(Regex("\\d{4}-\\d{2}-01")),
+                periodMonth = match { it.matches(Regex("\\d{4}-\\d{2}-01")) },
                 amount = "10000.00"
             )
         }
         assertEquals("Budget created.", viewModel.uiState.value.message)
+        assertEquals("", viewModel.uiState.value.budgetAmount)
+    }
+
+    @Test
+    fun `createBudget uses selected budget category`() = runTest {
+        coEvery { repository.createBudget(any(), any(), any()) } returns Unit
+        coEvery { repository.accounts() } returns mockAccounts
+        coEvery { repository.expenseCategories() } returns mockCategories
+        coEvery { repository.monthlySummary(any()) } returns mockSummary
+
+        viewModel.apply {
+            _uiState.value = _uiState.value.copy(
+                accounts = mockAccounts,
+                categories = mockCategories
+            )
+        }
+        viewModel.onBudgetCategorySelected("cat-2")
+        viewModel.onBudgetAmountChange("7500.00")
+        viewModel.createBudget()
+
+        coVerify {
+            repository.createBudget(
+                categoryId = "cat-2",
+                periodMonth = match { it.matches(Regex("\\d{4}-\\d{2}-01")) },
+                amount = "7500.00"
+            )
+        }
     }
 
     // ============== Logout Tests ==============
@@ -499,7 +646,7 @@ class HomeViewModelTest {
 
     @Test
     fun `successful action clears previous error message`() = runTest {
-        coEvery { repository.createAccount(any(), any()) } returns Unit
+        coEvery { repository.createAccount(any(), any()) } returns createdAccount
         coEvery { repository.accounts() } returns mockAccounts
         coEvery { repository.expenseCategories() } returns mockCategories
         coEvery { repository.monthlySummary(any()) } returns mockSummary
@@ -543,7 +690,7 @@ class HomeViewModelTest {
 
         viewModel.load()
 
-        coVerify { repository.monthlySummary(matches(Regex("\\d{4}-\\d{2}"))) }
+        coVerify { repository.monthlySummary(match { it.matches(Regex("\\d{4}-\\d{2}")) }) }
     }
 
     @Test
@@ -570,7 +717,7 @@ class HomeViewModelTest {
                 any(),
                 any(),
                 any(),
-                transactionDate = matches(Regex("\\d{4}-\\d{2}-\\d{2}"))
+                transactionDate = match { it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) }
             )
         }
     }
@@ -595,7 +742,7 @@ class HomeViewModelTest {
         coVerify {
             repository.createBudget(
                 any(),
-                periodMonth = matches(Regex("\\d{4}-\\d{2}-01")),
+                periodMonth = match { it.matches(Regex("\\d{4}-\\d{2}-01")) },
                 any()
             )
         }
@@ -659,7 +806,7 @@ class HomeViewModelTest {
 
     @Test
     fun `successful action reloads dashboard data`() = runTest {
-        coEvery { repository.createAccount(any(), any()) } returns Unit
+        coEvery { repository.createAccount(any(), any()) } returns createdAccount
         coEvery { repository.accounts() } returns mockAccounts
         coEvery { repository.expenseCategories() } returns mockCategories
         coEvery { repository.monthlySummary(any()) } returns mockSummary
@@ -676,7 +823,7 @@ class HomeViewModelTest {
 
     @Test
     fun `trimming whitespace from account name`() = runTest {
-        coEvery { repository.createAccount(any(), any()) } returns Unit
+        coEvery { repository.createAccount(any(), any()) } returns createdAccount
         coEvery { repository.accounts() } returns mockAccounts
         coEvery { repository.expenseCategories() } returns mockCategories
         coEvery { repository.monthlySummary(any()) } returns mockSummary

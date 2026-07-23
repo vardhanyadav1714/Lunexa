@@ -1,15 +1,7 @@
 package com.twango.lunexa.feature.auth.presentation
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -60,7 +52,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
@@ -71,7 +62,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.launch
 
 @Composable
@@ -143,8 +134,6 @@ private fun AuthScreen(
             .systemBarsPadding()
             .imePadding()
     ) {
-        AnimatedAuthBackdrop(modifier = Modifier.fillMaxSize())
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -314,37 +303,6 @@ private fun AuthScreen(
             }
 
             Spacer(modifier = Modifier.height(28.dp))
-        }
-    }
-}
-
-@Composable
-private fun AnimatedAuthBackdrop(modifier: Modifier = Modifier) {
-    val colors = MaterialTheme.colorScheme
-    val motion = rememberInfiniteTransition(label = "auth backdrop")
-    val drift by motion.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 9000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "auth drift"
-    )
-
-    Canvas(modifier = modifier) {
-        val offset = size.width * drift
-        repeat(4) { index ->
-            drawLine(
-                color = when (index % 3) {
-                    0 -> colors.primary.copy(alpha = 0.06f)
-                    1 -> colors.secondary.copy(alpha = 0.055f)
-                    else -> colors.tertiary.copy(alpha = 0.05f)
-                },
-                start = Offset(offset - size.width + index * size.width / 2f, 0f),
-                end = Offset(offset + index * size.width / 2f, size.height),
-                strokeWidth = 34f
-            )
         }
     }
 }

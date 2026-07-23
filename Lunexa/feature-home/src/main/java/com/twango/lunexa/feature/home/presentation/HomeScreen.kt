@@ -2,18 +2,14 @@ package com.twango.lunexa.feature.home.presentation
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,17 +32,21 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,7 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.twango.lunexa.core.network.dto.AccountDto
 import com.twango.lunexa.core.network.dto.CategoryDto
 import com.twango.lunexa.core.network.dto.MonthlySummaryDto
@@ -96,6 +96,7 @@ fun HomeRoute(
         val error = state.errorMessage
         if (error != null && (
             error.contains("Authentication failed", ignoreCase = true) ||
+            error.contains("Authentication required", ignoreCase = true) ||
             error.contains("401", ignoreCase = true) ||
             error.contains("unauthorized", ignoreCase = true)
         )) {
@@ -112,8 +113,11 @@ fun HomeRoute(
         onTransactionAmountChange = viewModel::onTransactionAmountChange,
         onMerchantChange = viewModel::onMerchantChange,
         onNoteChange = viewModel::onNoteChange,
+        onExpenseAccountSelected = viewModel::onExpenseAccountSelected,
+        onExpenseCategorySelected = viewModel::onExpenseCategorySelected,
         onCreateExpense = viewModel::createExpense,
         onBudgetAmountChange = viewModel::onBudgetAmountChange,
+        onBudgetCategorySelected = viewModel::onBudgetCategorySelected,
         onCreateBudget = viewModel::createBudget,
         onLogout = viewModel::logout
     )
@@ -129,17 +133,26 @@ private fun HomeScreen(
     onTransactionAmountChange: (String) -> Unit,
     onMerchantChange: (String) -> Unit,
     onNoteChange: (String) -> Unit,
+    onExpenseAccountSelected: (String) -> Unit,
+    onExpenseCategorySelected: (String) -> Unit,
     onCreateExpense: () -> Unit,
     onBudgetAmountChange: (String) -> Unit,
+    onBudgetCategorySelected: (String) -> Unit,
     onCreateBudget: () -> Unit,
     onLogout: () -> Unit
 ) {
+    var selectedTab by rememberSaveable { mutableStateOf(HomeTab.Overview) }
+
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            LunexaBottomBar(
+                selectedTab = selectedTab,
+                onTabSelected = { selectedTab = it }
+            )
+        }
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-            AnimatedDashboardBackdrop(modifier = Modifier.fillMaxSize())
-
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -148,7 +161,7 @@ private fun HomeScreen(
                     .padding(horizontal = 18.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                HeaderBar(onLogout = onLogout)
+                HeaderBar()
 
                 if (state.isLoading) {
                     LinearProgressIndicator(
@@ -185,27 +198,65 @@ private fun HomeScreen(
                         )
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        SummaryHero(state.summary)
-                        InsightStrip(state)
-                        FinanceVisualSuite(state)
-                        AccountSection(
-                            state = state,
-                            onAccountNameChange = onAccountNameChange,
-                            onOpeningBalanceChange = onOpeningBalanceChange,
-                            onCreateAccount = onCreateAccount
-                        )
-                        ExpenseSection(
-                            state = state,
-                            onTransactionAmountChange = onTransactionAmountChange,
-                            onMerchantChange = onMerchantChange,
-                            onNoteChange = onNoteChange,
-                            onCreateExpense = onCreateExpense
-                        )
-                        BudgetSection(
-                            state = state,
-                            onBudgetAmountChange = onBudgetAmountChange,
-                            onCreateBudget = onCreateBudget
-                        )
+                        when (selectedTab) {
+                            HomeTab.Overview -> {
+                                val currency = state.summary?.currency ?: "INR"
+                                DonutBreakdownCard(
+                                    title = "Monthly money mix",
+                                    subtitle = "This month overview",
+                                    centerValue = money(state.summary?.expenseTotal, currency),
+                                    centerLabel = "spent",
+                                    segments = financeSegmentsFor(state)
+                                )
+                                BudgetGaugeCard(state.summary)
+                                AccountBalanceCard(
+                                    accounts = state.accounts,
+                                    currency = state.summary?.currency ?: "INR"
+                                )
+                                CategoryPulseCard(state.categories, state.summary)
+                                SpendingInsightPanel(state)
+                                InsightStrip(state)
+                            }
+
+                            HomeTab.Account -> {
+                                AccountSection(
+                                    state = state,
+                                    onAccountNameChange = onAccountNameChange,
+                                    onOpeningBalanceChange = onOpeningBalanceChange,
+                                    onCreateAccount = onCreateAccount
+                                )
+                            }
+
+                            HomeTab.Expense -> {
+                                CategoryPulseCard(state.categories, state.summary)
+                                ExpenseSection(
+                                    state = state,
+                                    onTransactionAmountChange = onTransactionAmountChange,
+                                    onMerchantChange = onMerchantChange,
+                                    onNoteChange = onNoteChange,
+                                    onExpenseAccountSelected = onExpenseAccountSelected,
+                                    onExpenseCategorySelected = onExpenseCategorySelected,
+                                    onCreateExpense = onCreateExpense
+                                )
+                            }
+
+                            HomeTab.Budget -> {
+                                BudgetGaugeCard(state.summary)
+                                BudgetSection(
+                                    state = state,
+                                    onBudgetAmountChange = onBudgetAmountChange,
+                                    onBudgetCategorySelected = onBudgetCategorySelected,
+                                    onCreateBudget = onCreateBudget
+                                )
+                            }
+
+                            HomeTab.Profile -> {
+                                ProfileSection(
+                                    state = state,
+                                    onLogout = onLogout
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -236,52 +287,95 @@ private fun HomeScreen(
     }
 }
 
-@Composable
-private fun AnimatedDashboardBackdrop(modifier: Modifier = Modifier) {
-    val colorScheme = MaterialTheme.colorScheme
-    val motion = rememberInfiniteTransition(label = "dashboard backdrop")
-    val drift by motion.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 11000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "diagonal drift"
-    )
+private enum class HomeTab(val label: String) {
+    Overview("Home"),
+    Account("Account"),
+    Expense("Expense"),
+    Budget("Budget"),
+    Profile("Profile")
+}
 
-    Canvas(
-        modifier = modifier.background(
-            Brush.verticalGradient(
-                listOf(
-                    colorScheme.background,
-                    colorScheme.primaryContainer.copy(alpha = 0.36f),
-                    colorScheme.secondaryContainer.copy(alpha = 0.22f),
-                    colorScheme.background
-                )
-            )
-        )
+@Composable
+private fun LunexaBottomBar(
+    selectedTab: HomeTab,
+    onTabSelected: (HomeTab) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp, vertical = 10.dp),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shadowElevation = 10.dp
     ) {
-        val travel = size.width + size.height
-        val offset = travel * drift
-        repeat(5) { index ->
-            val railOffset = offset - travel + (index * travel / 3.2f)
-            drawLine(
-                color = when (index % 3) {
-                    0 -> colorScheme.primary.copy(alpha = 0.07f)
-                    1 -> colorScheme.secondary.copy(alpha = 0.06f)
-                    else -> colorScheme.tertiary.copy(alpha = 0.055f)
-                },
-                start = Offset(railOffset, size.height + 80f),
-                end = Offset(railOffset + size.height, -80f),
-                strokeWidth = 42f
-            )
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BottomItem("Home", selectedTab == HomeTab.Overview, Modifier.weight(1f)) {
+                onTabSelected(HomeTab.Overview)
+            }
+            BottomItem("Account", selectedTab == HomeTab.Account, Modifier.weight(1f)) {
+                onTabSelected(HomeTab.Account)
+            }
+            BottomItem("Expense", selectedTab == HomeTab.Expense, Modifier.weight(1f)) {
+                onTabSelected(HomeTab.Expense)
+            }
+            BottomItem("Budget", selectedTab == HomeTab.Budget, Modifier.weight(1f)) {
+                onTabSelected(HomeTab.Budget)
+            }
+            BottomItem("Profile", selectedTab == HomeTab.Profile, Modifier.weight(1f)) {
+                onTabSelected(HomeTab.Profile)
+            }
         }
     }
 }
 
 @Composable
-private fun HeaderBar(onLogout: () -> Unit) {
+private fun BottomItem(
+    text: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(18.dp)
+                .clip(CircleShape)
+                .background(
+                    if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.18f)
+                    }
+                )
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun HeaderBar() {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -294,7 +388,7 @@ private fun HeaderBar(onLogout: () -> Unit) {
             Box(
                 modifier = Modifier
                     .size(46.dp)
-                    .clip(CircleShape)
+                    .clip(RoundedCornerShape(8.dp))
                     .background(
                         Brush.linearGradient(
                             listOf(
@@ -316,15 +410,15 @@ private fun HeaderBar(onLogout: () -> Unit) {
             Column(modifier = Modifier.padding(start = 12.dp)) {
                 Text(
                     text = "Lunexa",
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onBackground,
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = "Live money command center",
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = "Private money control",
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -332,12 +426,21 @@ private fun HeaderBar(onLogout: () -> Unit) {
             }
         }
         Surface(
-            shape = RoundedCornerShape(8.dp),
+            shape = CircleShape,
             color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
-            TextButton(onClick = onLogout) {
-                Text("Logout", fontWeight = FontWeight.Bold)
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .padding(10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "!",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Black
+                )
             }
         }
     }
@@ -354,16 +457,6 @@ private fun SummaryHero(summary: MonthlySummaryDto?) {
         targetValue = (income / totalMovement).coerceIn(0.08f, 0.92f),
         animationSpec = tween(900, easing = FastOutSlowInEasing),
         label = "income share"
-    )
-    val motion = rememberInfiniteTransition(label = "hero shimmer")
-    val sweep by motion.animateFloat(
-        initialValue = -0.35f,
-        targetValue = 1.35f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 3600, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "hero sweep"
     )
 
     Card(
@@ -385,22 +478,6 @@ private fun SummaryHero(summary: MonthlySummaryDto?) {
                     )
                 )
         ) {
-            Canvas(modifier = Modifier.matchParentSize()) {
-                val x = size.width * sweep
-                drawLine(
-                    color = Color.White.copy(alpha = 0.18f),
-                    start = Offset(x - size.height, size.height),
-                    end = Offset(x, 0f),
-                    strokeWidth = 62f
-                )
-                drawLine(
-                    color = Color.White.copy(alpha = 0.08f),
-                    start = Offset(x - size.height - 120f, size.height),
-                    end = Offset(x - 120f, 0f),
-                    strokeWidth = 22f
-                )
-            }
-
             Column(
                 modifier = Modifier.padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(18.dp)
@@ -592,6 +669,106 @@ private fun HeroMetric(
 }
 
 @Composable
+private fun SpendingInsightPanel(state: HomeUiState) {
+    val summary = state.summary
+    val currency = summary?.currency ?: "INR"
+    val income = amountFloat(summary?.incomeTotal)
+    val expenses = amountFloat(summary?.expenseTotal)
+    val largestExpense = amountFloat(summary?.largestExpense?.amount)
+
+    DashboardPanel(
+        title = "Spending intelligence",
+        subtitle = "AI insights to help you spend smarter",
+        accent = MaterialTheme.colorScheme.primary
+    ) {
+        CashflowSparkline(
+            values = listOf(income, expenses, largestExpense, amountFloat(summary?.budgetSummary?.spentAmount)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(118.dp)
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            MiniStat(
+                label = "Categories",
+                value = state.categories.size.toString(),
+                modifier = Modifier.weight(1f)
+            )
+            MiniStat(
+                label = "Largest expense",
+                value = money(summary?.largestExpense?.amount, currency),
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Text(
+            text = if (state.categories.isEmpty()) {
+                "Categories will appear here after the first sync."
+            } else {
+                "Your category mix is ready for expense tracking."
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        SuggestionRow()
+    }
+}
+
+@Composable
+private fun SuggestionRow() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.54f),
+        contentColor = MaterialTheme.colorScheme.onSurface
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primary,
+                                MaterialTheme.colorScheme.secondary
+                            )
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "?",
+                    color = Color.White,
+                    fontWeight = FontWeight.Black
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    text = "Start adding expenses",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    text = "Track your spending to get personalized insights.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun InsightStrip(state: HomeUiState) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -664,6 +841,117 @@ private fun InsightTile(
             )
         }
     }
+}
+
+@Composable
+private fun ProfileSection(
+    state: HomeUiState,
+    onLogout: () -> Unit
+) {
+    val currency = state.summary?.currency ?: "INR"
+
+    DashboardPanel(
+        title = "Profile",
+        subtitle = "Session and money workspace",
+        accent = MaterialTheme.colorScheme.primary
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(54.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primary,
+                                MaterialTheme.colorScheme.secondary,
+                                MaterialTheme.colorScheme.tertiary
+                            )
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "L",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = Color.White,
+                    fontWeight = FontWeight.Black
+                )
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Lunexa account",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Black
+                )
+                Text(
+                    text = "Signed in and synced",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            MiniStat(
+                label = "Accounts",
+                value = state.accounts.size.toString(),
+                modifier = Modifier.weight(1f)
+            )
+            MiniStat(
+                label = "Categories",
+                value = state.categories.size.toString(),
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            MiniStat(
+                label = "This month",
+                value = money(state.summary?.expenseTotal, currency),
+                modifier = Modifier.weight(1f)
+            )
+            MiniStat(
+                label = "Transactions",
+                value = (state.summary?.transactionCount ?: 0).toString(),
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Button(
+            onClick = onLogout,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(8.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer
+            )
+        ) {
+            Text("Sign out", fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun financeSegmentsFor(state: HomeUiState): List<ChartSegment> {
+    val summary = state.summary
+    return financeSegments(
+        income = amountFloat(summary?.incomeTotal),
+        expenses = amountFloat(summary?.expenseTotal),
+        budgetRemaining = amountFloat(summary?.budgetSummary?.remainingAmount)
+    )
 }
 
 @Composable
@@ -931,15 +1219,41 @@ private fun AccountBalanceCard(
     accounts: List<AccountDto>,
     currency: String
 ) {
+    val activeAccounts = accounts
+        .filterNot { it.isArchived }
+        .sortedWith(compareBy<AccountDto> { it.sortOrder }.thenBy { it.name.lowercase(Locale.US) })
+
     DashboardPanel(
         title = "Account pulse",
-        subtitle = if (accounts.isEmpty()) "Add an account to unlock balance bars" else "Live balance spread",
+        subtitle = if (activeAccounts.isEmpty()) "Add an account to unlock balance bars" else "Live balance spread",
         accent = MaterialTheme.colorScheme.tertiary
     ) {
-        if (accounts.isEmpty()) {
-            EmptyLine("No account added yet.")
+        if (activeAccounts.isEmpty()) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f),
+                contentColor = MaterialTheme.colorScheme.primary
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "+  Add your first account",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = ">",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
         } else {
-            val balances = accounts.take(4).map { account ->
+            val balances = activeAccounts.take(4).map { account ->
                 account to abs(amountFloat(account.currentBalance))
             }
             val maxBalance = max(balances.maxOfOrNull { it.second } ?: 0f, 1f)
@@ -950,7 +1264,7 @@ private fun AccountBalanceCard(
                     balance = balance,
                     maxBalance = maxBalance,
                     accent = chartPalette(index),
-                    currency = currency
+                    currency = account.currency.ifBlank { currency }
                 )
             }
         }
@@ -1123,14 +1437,25 @@ private fun AccountSection(
     onOpeningBalanceChange: (String) -> Unit,
     onCreateAccount: () -> Unit
 ) {
+    val activeAccounts = state.activeAccountsForUi()
+    val archivedCount = state.accounts.count { it.isArchived }
+
     DashboardPanel(
-        title = "Create account",
-        subtitle = if (state.accounts.isEmpty()) "Add your first money source" else "Add another balance source",
+        title = "Accounts",
+        subtitle = if (activeAccounts.isEmpty()) "Add your first money source" else "Manage money sources",
         accent = MaterialTheme.colorScheme.primary
     ) {
-        state.accounts.firstOrNull()?.let { account ->
-            AccountPreview(account)
-        } ?: EmptyLine("No account added yet.")
+        if (activeAccounts.isEmpty()) {
+            EmptyLine("No active account added yet.")
+        } else {
+            activeAccounts.forEach { account ->
+                AccountPreview(account)
+            }
+        }
+
+        if (archivedCount > 0) {
+            EmptyLine("$archivedCount archived account${if (archivedCount == 1) "" else "s"} hidden from new transactions.")
+        }
 
         OutlinedTextField(
             value = state.accountName,
@@ -1138,6 +1463,7 @@ private fun AccountSection(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Account name") },
             singleLine = true,
+            enabled = !state.isLoading,
             shape = RoundedCornerShape(8.dp)
         )
         OutlinedTextField(
@@ -1147,6 +1473,7 @@ private fun AccountSection(
             label = { Text("Opening balance") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             singleLine = true,
+            enabled = !state.isLoading,
             shape = RoundedCornerShape(8.dp)
         )
         Button(
@@ -1155,7 +1482,7 @@ private fun AccountSection(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(8.dp)
         ) {
-            Text("Create cash account", fontWeight = FontWeight.Bold)
+            Text(if (activeAccounts.isEmpty()) "Create cash account" else "Add another account", fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -1196,19 +1523,170 @@ private fun AccountPreview(account: AccountDto) {
     }
 }
 
+private data class SelectionOption(
+    val id: String,
+    val title: String,
+    val subtitle: String? = null
+)
+
+@Composable
+private fun SelectionField(
+    label: String,
+    selectedTitle: String,
+    selectedSubtitle: String?,
+    enabled: Boolean,
+    options: List<SelectionOption>,
+    onSelect: (String) -> Unit
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val canOpen = enabled && options.isNotEmpty()
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(enabled = canOpen) { expanded = true },
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = selectedTitle,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (canOpen) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    selectedSubtitle?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                Text(
+                    text = "v",
+                    modifier = Modifier.padding(start = 12.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = option.title,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            option.subtitle?.let {
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    },
+                    onClick = {
+                        expanded = false
+                        onSelect(option.id)
+                    }
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun ExpenseSection(
     state: HomeUiState,
     onTransactionAmountChange: (String) -> Unit,
     onMerchantChange: (String) -> Unit,
     onNoteChange: (String) -> Unit,
+    onExpenseAccountSelected: (String) -> Unit,
+    onExpenseCategorySelected: (String) -> Unit,
     onCreateExpense: () -> Unit
 ) {
+    val activeAccounts = state.activeAccountsForUi()
+    val categories = state.expenseCategoriesForUi()
+    val selectedAccount = state.selectedExpenseAccountForUi()
+    val selectedCategory = state.selectedExpenseCategoryForUi()
+    val canSubmit = !state.isLoading && selectedAccount != null && selectedCategory != null
+
     DashboardPanel(
         title = "Add expense",
-        subtitle = "Capture spending against your first account",
+        subtitle = "Choose the account and spending category",
         accent = MaterialTheme.colorScheme.tertiary
     ) {
+        if (activeAccounts.isEmpty()) {
+            EmptyLine("Create an account before adding expenses.")
+        } else {
+            SelectionField(
+                label = "Account",
+                selectedTitle = selectedAccount?.name ?: "Select account",
+                selectedSubtitle = selectedAccount?.let { money(it.currentBalance, it.currency) },
+                enabled = !state.isLoading,
+                options = activeAccounts.map {
+                    SelectionOption(
+                        id = it.id,
+                        title = it.name,
+                        subtitle = "${it.type.replace("_", " ")} · ${money(it.currentBalance, it.currency)}"
+                    )
+                },
+                onSelect = onExpenseAccountSelected
+            )
+        }
+
+        if (categories.isEmpty()) {
+            EmptyLine("Expense categories are not available yet.")
+        } else {
+            SelectionField(
+                label = "Category",
+                selectedTitle = selectedCategory?.name ?: "Select category",
+                selectedSubtitle = null,
+                enabled = !state.isLoading,
+                options = categories.map {
+                    SelectionOption(
+                        id = it.id,
+                        title = it.name,
+                        subtitle = if (it.isDefault) "Default category" else null
+                    )
+                },
+                onSelect = onExpenseCategorySelected
+            )
+        }
+
         OutlinedTextField(
             value = state.transactionAmount,
             onValueChange = onTransactionAmountChange,
@@ -1216,6 +1694,7 @@ private fun ExpenseSection(
             label = { Text("Amount") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             singleLine = true,
+            enabled = canSubmit,
             shape = RoundedCornerShape(8.dp)
         )
         OutlinedTextField(
@@ -1224,6 +1703,7 @@ private fun ExpenseSection(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Merchant") },
             singleLine = true,
+            enabled = canSubmit,
             shape = RoundedCornerShape(8.dp)
         )
         OutlinedTextField(
@@ -1232,11 +1712,12 @@ private fun ExpenseSection(
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Note") },
             singleLine = true,
+            enabled = canSubmit,
             shape = RoundedCornerShape(8.dp)
         )
         Button(
             onClick = onCreateExpense,
-            enabled = !state.isLoading,
+            enabled = canSubmit,
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(8.dp),
             colors = ButtonDefaults.buttonColors(
@@ -1253,9 +1734,13 @@ private fun ExpenseSection(
 private fun BudgetSection(
     state: HomeUiState,
     onBudgetAmountChange: (String) -> Unit,
+    onBudgetCategorySelected: (String) -> Unit,
     onCreateBudget: () -> Unit
 ) {
     val utilization = budgetUtilization(state.summary)
+    val categories = state.expenseCategoriesForUi()
+    val selectedCategory = state.selectedBudgetCategoryForUi()
+    val canSubmit = !state.isLoading && selectedCategory != null
 
     DashboardPanel(
         title = "Create budget",
@@ -1293,6 +1778,25 @@ private fun BudgetSection(
             EmptyLine("No budget activity yet.")
         }
 
+        if (categories.isEmpty()) {
+            EmptyLine("Expense categories are not available yet.")
+        } else {
+            SelectionField(
+                label = "Category",
+                selectedTitle = selectedCategory?.name ?: "Select category",
+                selectedSubtitle = null,
+                enabled = !state.isLoading,
+                options = categories.map {
+                    SelectionOption(
+                        id = it.id,
+                        title = it.name,
+                        subtitle = if (it.isDefault) "Default category" else null
+                    )
+                },
+                onSelect = onBudgetCategorySelected
+            )
+        }
+
         OutlinedTextField(
             value = state.budgetAmount,
             onValueChange = onBudgetAmountChange,
@@ -1300,11 +1804,12 @@ private fun BudgetSection(
             label = { Text("Budget amount") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             singleLine = true,
+            enabled = canSubmit,
             shape = RoundedCornerShape(8.dp)
         )
         Button(
             onClick = onCreateBudget,
-            enabled = !state.isLoading,
+            enabled = canSubmit,
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(8.dp),
             colors = ButtonDefaults.buttonColors(
@@ -1477,6 +1982,28 @@ private fun money(value: String?, currency: String): String {
 
 private fun amountFloat(value: String?): Float =
     value?.trim()?.toFloatOrNull() ?: 0f
+
+private fun HomeUiState.activeAccountsForUi(): List<AccountDto> =
+    accounts
+        .filterNot { it.isArchived }
+        .sortedWith(compareBy<AccountDto> { it.sortOrder }.thenBy { it.name.lowercase(Locale.US) })
+
+private fun HomeUiState.expenseCategoriesForUi(): List<CategoryDto> =
+    categories
+        .filter { it.type.equals("EXPENSE", ignoreCase = true) }
+        .sortedWith(compareBy<CategoryDto> { it.sortOrder }.thenBy { it.name.lowercase(Locale.US) })
+
+private fun HomeUiState.selectedExpenseAccountForUi(): AccountDto? =
+    activeAccountsForUi().firstOrNull { it.id == selectedExpenseAccountId }
+        ?: activeAccountsForUi().firstOrNull()
+
+private fun HomeUiState.selectedExpenseCategoryForUi(): CategoryDto? =
+    expenseCategoriesForUi().firstOrNull { it.id == selectedExpenseCategoryId }
+        ?: expenseCategoriesForUi().firstOrNull()
+
+private fun HomeUiState.selectedBudgetCategoryForUi(): CategoryDto? =
+    expenseCategoriesForUi().firstOrNull { it.id == selectedBudgetCategoryId }
+        ?: expenseCategoriesForUi().firstOrNull()
 
 private fun budgetUtilization(summary: MonthlySummaryDto?): Float? {
     val percent = summary?.budgetSummary?.utilizationPercent?.toFloatOrNull() ?: return null

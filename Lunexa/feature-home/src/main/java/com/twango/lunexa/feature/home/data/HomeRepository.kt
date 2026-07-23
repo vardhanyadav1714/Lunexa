@@ -21,15 +21,14 @@ class HomeRepository @Inject constructor(
     suspend fun monthlySummary(month: String): MonthlySummaryDto =
         apiService.getMonthlySummary(month).data
 
-    suspend fun createAccount(name: String, openingBalance: String) {
+    suspend fun createAccount(name: String, openingBalance: String): AccountDto =
         apiService.createAccount(
             CreateAccountRequest(
                 name = name,
                 type = "CASH",
                 openingBalance = openingBalance
             )
-        )
-    }
+        ).data.account
 
     suspend fun createExpense(
         accountId: String,

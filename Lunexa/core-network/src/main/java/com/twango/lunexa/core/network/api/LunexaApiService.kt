@@ -18,6 +18,7 @@ import com.twango.lunexa.core.network.dto.PasswordResetPayloadDto
 import com.twango.lunexa.core.network.dto.RegisterRequest
 import com.twango.lunexa.core.network.dto.StartEmailVerificationRequest
 import com.twango.lunexa.core.network.dto.StartPasswordResetRequest
+import com.twango.lunexa.core.network.dto.TokenPairDto
 import com.twango.lunexa.core.network.dto.TransactionPayloadDto
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -35,7 +36,7 @@ interface LunexaApiService {
     suspend fun login(@Body request: LoginRequest): ApiEnvelope<AuthPayloadDto>
 
     @POST("auth/refresh")
-    suspend fun refreshToken(@Body request: RefreshTokenRequest): ApiEnvelope<AuthPayloadDto>
+    suspend fun refreshToken(@Body request: RefreshTokenRequest): ApiEnvelope<TokenPairDto>
 
     @POST("auth/password-reset/start")
     suspend fun startPasswordReset(@Body request: StartPasswordResetRequest): ApiEnvelope<PasswordResetPayloadDto>

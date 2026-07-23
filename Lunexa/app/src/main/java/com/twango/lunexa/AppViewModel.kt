@@ -1,13 +1,11 @@
 package com.twango.lunexa
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import com.twango.lunexa.core.network.auth.AuthTokenStore
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
@@ -22,9 +20,9 @@ class AppViewModel @Inject constructor(
 
     /**
      * Call this when an authentication error occurs (e.g., 401 after failed refresh)
-     * This will clear the error state after it's been handled
      */
     fun onAuthError(message: String) {
+        tokenStore.clear()
         _authError.value = message
     }
 

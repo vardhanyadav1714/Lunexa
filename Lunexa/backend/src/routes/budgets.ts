@@ -6,7 +6,7 @@ import type { Env, AppVariables } from "../env";
 import { ApiError } from "../errors";
 import { mapBudget } from "../mappers";
 import { list, ok } from "../response";
-import { parseJson } from "../validation";
+import { parseJson, parseQuery } from "../validation";
 
 export const budgetRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -25,6 +25,13 @@ const updateBudgetSchema = z.object({
   expectedVersion: z.number().int().positive().optional(),
   amount: moneySchema.optional(),
   alertThresholdPercent: moneySchema.optional(),
+});
+
+const listBudgetsQuerySchema = z.object({
+  periodMonth: monthSchema.optional(),
+  fromMonth: monthSchema.optional(),
+  toMonth: monthSchema.optional(),
+  categoryId: uuidSchema.optional(),
 });
 
 async function ensureExpenseCategory(sql: ReturnType<typeof getSql>, userId: string, categoryId: string) {
@@ -48,6 +55,15 @@ budgetRoutes.use("*", requireAuth);
 budgetRoutes.get("/", async (c) => {
   const user = c.get("user");
   const sql = getSql(c.env);
+  const queryParams = parseQuery(
+    {
+      periodMonth: c.req.query("periodMonth"),
+      fromMonth: c.req.query("fromMonth"),
+      toMonth: c.req.query("toMonth"),
+      categoryId: c.req.query("categoryId"),
+    },
+    listBudgetsQuerySchema,
+  );
   const params: unknown[] = [user.id];
   let query = `
     SELECT id, category_id, period_month, amount, alert_threshold_percent, created_at, updated_at, version
@@ -56,25 +72,25 @@ budgetRoutes.get("/", async (c) => {
       AND deleted_at IS NULL
   `;
 
-  const periodMonth = c.req.query("periodMonth");
+  const periodMonth = queryParams.periodMonth;
   if (periodMonth) {
     params.push(periodMonth);
     query += ` AND period_month = $${params.length}`;
   }
 
-  const fromMonth = c.req.query("fromMonth");
+  const fromMonth = queryParams.fromMonth;
   if (fromMonth) {
     params.push(fromMonth);
     query += ` AND period_month >= $${params.length}`;
   }
 
-  const toMonth = c.req.query("toMonth");
+  const toMonth = queryParams.toMonth;
   if (toMonth) {
     params.push(toMonth);
     query += ` AND period_month <= $${params.length}`;
   }
 
-  const categoryId = c.req.query("categoryId");
+  const categoryId = queryParams.categoryId;
   if (categoryId) {
     params.push(categoryId);
     query += ` AND category_id = $${params.length}`;

@@ -31,6 +31,23 @@ export async function parseJson<T>(
   }
 }
 
+export function parseQuery<T>(query: unknown, schema: ZodSchema<T>): T {
+  try {
+    return schema.parse(query);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      throw validationError(
+        error.issues.map((issue) => ({
+          field: issue.path.join("."),
+          message: issue.message,
+        })),
+      );
+    }
+
+    throw error;
+  }
+}
+
 export function requiredQuery(value: string | undefined, field: string): string {
   if (!value) {
     throw validationError([{ field, message: `${field} is required.` }]);

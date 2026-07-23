@@ -22,6 +22,9 @@ data class HomeUiState(
     val accounts: List<AccountDto> = emptyList(),
     val categories: List<CategoryDto> = emptyList(),
     val summary: MonthlySummaryDto? = null,
+    val selectedExpenseAccountId: String? = null,
+    val selectedExpenseCategoryId: String? = null,
+    val selectedBudgetCategoryId: String? = null,
     val accountName: String = "",
     val openingBalance: String = "",
     val transactionAmount: String = "",
@@ -38,7 +41,7 @@ data class HomeUiState(
 class HomeViewModel @Inject constructor(
     private val repository: HomeRepository
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(HomeUiState())
+    internal val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState
 
     fun load() {
@@ -56,7 +59,7 @@ class HomeViewModel @Inject constructor(
                         categories = categories,
                         summary = summary,
                         isLoading = false
-                    )
+                    ).withValidSelections()
                 }
             }.onFailure { throwable ->
                 _uiState.update {
@@ -93,10 +96,44 @@ class HomeViewModel @Inject constructor(
         _uiState.update { it.copy(budgetAmount = value, errorMessage = null, message = null) }
     }
 
+    fun onExpenseAccountSelected(accountId: String) {
+        _uiState.update { state ->
+            if (state.activeAccounts().any { it.id == accountId }) {
+                state.copy(selectedExpenseAccountId = accountId, errorMessage = null, message = null)
+            } else {
+                state.copy(errorMessage = "Selected account is no longer available.", message = null)
+            }
+        }
+    }
+
+    fun onExpenseCategorySelected(categoryId: String) {
+        _uiState.update { state ->
+            if (state.expenseCategories().any { it.id == categoryId }) {
+                state.copy(selectedExpenseCategoryId = categoryId, errorMessage = null, message = null)
+            } else {
+                state.copy(errorMessage = "Selected category is no longer available.", message = null)
+            }
+        }
+    }
+
+    fun onBudgetCategorySelected(categoryId: String) {
+        _uiState.update { state ->
+            if (state.expenseCategories().any { it.id == categoryId }) {
+                state.copy(selectedBudgetCategoryId = categoryId, errorMessage = null, message = null)
+            } else {
+                state.copy(errorMessage = "Selected category is no longer available.", message = null)
+            }
+        }
+    }
+
     fun createAccount() {
         val state = _uiState.value
         if (state.accountName.isBlank()) {
             _uiState.update { it.copy(errorMessage = "Enter an account name.") }
+            return
+        }
+        if (state.accounts.any { it.name.equals(state.accountName.trim(), ignoreCase = true) && !it.isArchived }) {
+            _uiState.update { it.copy(errorMessage = "An account with this name already exists.") }
             return
         }
         if (!isMoneyValue(state.openingBalance, allowZeroOrNegative = true)) {
@@ -105,19 +142,34 @@ class HomeViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            runAction("Account created.") {
-                repository.createAccount(
-                    name = state.accountName.trim(),
-                    openingBalance = state.openingBalance.trim()
-                )
-            }
+            var createdAccountId: String? = null
+            runAction(
+                successMessage = "Account created.",
+                clearInputs = { it.copy(accountName = "", openingBalance = "") },
+                afterReload = { reloaded ->
+                    val selectedId = createdAccountId
+                        ?.takeIf { accountId -> reloaded.activeAccounts().any { it.id == accountId } }
+                    if (selectedId == null) {
+                        reloaded
+                    } else {
+                        reloaded.copy(selectedExpenseAccountId = selectedId)
+                    }
+                },
+                action = {
+                    val createdAccount = repository.createAccount(
+                        name = state.accountName.trim(),
+                        openingBalance = state.openingBalance.trim()
+                    )
+                    createdAccountId = createdAccount.id
+                }
+            )
         }
     }
 
     fun createExpense() {
         val state = _uiState.value
-        val account = state.accounts.firstOrNull()
-        val category = state.categories.firstOrNull()
+        val account = state.selectedExpenseAccount()
+        val category = state.selectedExpenseCategory()
 
         if (account == null) {
             _uiState.update { it.copy(errorMessage = "Create an account first.") }
@@ -133,22 +185,32 @@ class HomeViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            runAction("Expense added.") {
-                repository.createExpense(
-                    accountId = account.id,
-                    categoryId = category.id,
-                    amount = state.transactionAmount.trim(),
-                    merchant = state.merchant.trim(),
-                    note = state.note.trim(),
-                    transactionDate = today()
-                )
-            }
+            runAction(
+                successMessage = "Expense added.",
+                clearInputs = {
+                    it.copy(
+                        transactionAmount = "",
+                        merchant = "",
+                        note = ""
+                    )
+                },
+                action = {
+                    repository.createExpense(
+                        accountId = account.id,
+                        categoryId = category.id,
+                        amount = state.transactionAmount.trim(),
+                        merchant = state.merchant.trim(),
+                        note = state.note.trim(),
+                        transactionDate = today()
+                    )
+                }
+            )
         }
     }
 
     fun createBudget() {
         val state = _uiState.value
-        val category = state.categories.firstOrNull()
+        val category = state.selectedBudgetCategory()
         if (category == null) {
             _uiState.update { it.copy(errorMessage = "No expense category found for this user.") }
             return
@@ -159,13 +221,17 @@ class HomeViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            runAction("Budget created.") {
-                repository.createBudget(
-                    categoryId = category.id,
-                    periodMonth = "${currentMonth()}-01",
-                    amount = state.budgetAmount.trim()
-                )
-            }
+            runAction(
+                successMessage = "Budget created.",
+                clearInputs = { it.copy(budgetAmount = "") },
+                action = {
+                    repository.createBudget(
+                        categoryId = category.id,
+                        periodMonth = "${currentMonth()}-01",
+                        amount = state.budgetAmount.trim()
+                    )
+                }
+            )
         }
     }
 
@@ -174,7 +240,12 @@ class HomeViewModel @Inject constructor(
         _uiState.update { it.copy(isLoggedOut = true) }
     }
 
-    private suspend fun runAction(successMessage: String, action: suspend () -> Unit) {
+    private suspend fun runAction(
+        successMessage: String,
+        clearInputs: (HomeUiState) -> HomeUiState = { it },
+        afterReload: (HomeUiState) -> HomeUiState = { it },
+        action: suspend () -> Unit
+    ) {
         _uiState.update { it.copy(isLoading = true, errorMessage = null, message = null) }
 
         runCatching {
@@ -185,13 +256,15 @@ class HomeViewModel @Inject constructor(
             val summary = repository.monthlySummary(currentMonth())
 
             _uiState.update {
-                it.copy(
+                val reloaded = clearInputs(it).copy(
                     accounts = accounts,
                     categories = categories,
                     summary = summary,
                     isLoading = false,
-                    message = successMessage
-                )
+                    message = successMessage,
+                    errorMessage = null
+                ).withValidSelections()
+                afterReload(reloaded).withValidSelections()
             }
         }.onFailure { throwable ->
             _uiState.update {
@@ -216,3 +289,38 @@ class HomeViewModel @Inject constructor(
 
     private fun today(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 }
+
+private fun HomeUiState.withValidSelections(): HomeUiState {
+    val activeAccounts = activeAccounts()
+    val expenseCategories = expenseCategories()
+    return copy(
+        selectedExpenseAccountId = selectedExpenseAccountId
+            ?.takeIf { selectedId -> activeAccounts.any { it.id == selectedId } }
+            ?: activeAccounts.firstOrNull()?.id,
+        selectedExpenseCategoryId = selectedExpenseCategoryId
+            ?.takeIf { selectedId -> expenseCategories.any { it.id == selectedId } }
+            ?: expenseCategories.firstOrNull()?.id,
+        selectedBudgetCategoryId = selectedBudgetCategoryId
+            ?.takeIf { selectedId -> expenseCategories.any { it.id == selectedId } }
+            ?: expenseCategories.firstOrNull()?.id
+    )
+}
+
+private fun HomeUiState.selectedExpenseAccount(): AccountDto? =
+    activeAccounts().firstOrNull { it.id == selectedExpenseAccountId } ?: activeAccounts().firstOrNull()
+
+private fun HomeUiState.selectedExpenseCategory(): CategoryDto? =
+    expenseCategories().firstOrNull { it.id == selectedExpenseCategoryId } ?: expenseCategories().firstOrNull()
+
+private fun HomeUiState.selectedBudgetCategory(): CategoryDto? =
+    expenseCategories().firstOrNull { it.id == selectedBudgetCategoryId } ?: expenseCategories().firstOrNull()
+
+private fun HomeUiState.activeAccounts(): List<AccountDto> =
+    accounts
+        .filterNot { it.isArchived }
+        .sortedWith(compareBy<AccountDto> { it.sortOrder }.thenBy { it.name.lowercase(Locale.US) })
+
+private fun HomeUiState.expenseCategories(): List<CategoryDto> =
+    categories
+        .filter { it.type.equals("EXPENSE", ignoreCase = true) }
+        .sortedWith(compareBy<CategoryDto> { it.sortOrder }.thenBy { it.name.lowercase(Locale.US) })

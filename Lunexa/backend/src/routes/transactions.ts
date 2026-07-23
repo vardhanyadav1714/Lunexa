@@ -6,13 +6,14 @@ import type { Env, AppVariables } from "../env";
 import { ApiError } from "../errors";
 import { mapTransaction } from "../mappers";
 import { list, ok } from "../response";
-import { parseJson } from "../validation";
+import { parseJson, parseQuery } from "../validation";
 
 export const transactionRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
 const uuidSchema = z.string().uuid();
 const moneySchema = z.string().regex(/^\d{1,12}(\.\d{1,2})?$/);
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const cursorSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 
 const createTransactionSchema = z
   .object({
@@ -56,12 +57,23 @@ const updateTransactionSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
+const listTransactionsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  cursor: cursorSchema.optional(),
+  accountId: uuidSchema.optional(),
+  categoryId: uuidSchema.optional(),
+  type: z.enum(["INCOME", "EXPENSE", "TRANSFER"]).optional(),
+  from: dateSchema.optional(),
+  to: dateSchema.optional(),
+});
+
 async function ensureAccount(sql: Sql, userId: string, accountId: string, code = "ACCOUNT_NOT_FOUND") {
   const rows = await sql`
     SELECT id
     FROM accounts
     WHERE id = ${accountId}
       AND user_id = ${userId}
+      AND is_archived = false
       AND deleted_at IS NULL
     LIMIT 1
   `;
@@ -101,7 +113,19 @@ transactionRoutes.use("*", requireAuth);
 transactionRoutes.get("/", async (c) => {
   const user = c.get("user");
   const sql = getSql(c.env);
-  const limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
+  const queryParams = parseQuery(
+    {
+      limit: c.req.query("limit"),
+      cursor: c.req.query("cursor"),
+      accountId: c.req.query("accountId"),
+      categoryId: c.req.query("categoryId"),
+      type: c.req.query("type"),
+      from: c.req.query("from"),
+      to: c.req.query("to"),
+    },
+    listTransactionsQuerySchema,
+  );
+  const limit = queryParams.limit;
   const params: unknown[] = [user.id];
   let query = `
     SELECT id, account_id, transfer_account_id, category_id, type, amount, currency, note, merchant,
@@ -118,26 +142,26 @@ transactionRoutes.get("/", async (c) => {
   ] as const;
 
   for (const [queryName, columnName] of filters) {
-    const value = c.req.query(queryName);
+    const value = queryParams[queryName];
     if (value) {
       params.push(value);
       query += ` AND ${columnName} = $${params.length}`;
     }
   }
 
-  const from = c.req.query("from");
+  const from = queryParams.from;
   if (from) {
     params.push(from);
     query += ` AND transaction_date >= $${params.length}`;
   }
 
-  const to = c.req.query("to");
+  const to = queryParams.to;
   if (to) {
     params.push(to);
     query += ` AND transaction_date <= $${params.length}`;
   }
 
-  const cursor = c.req.query("cursor");
+  const cursor = queryParams.cursor;
   if (cursor) {
     const [cursorDate, cursorId] = cursor.split("_");
     if (cursorDate && cursorId) {

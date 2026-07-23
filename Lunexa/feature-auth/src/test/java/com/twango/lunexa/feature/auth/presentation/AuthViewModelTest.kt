@@ -8,7 +8,7 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -26,7 +26,7 @@ class AuthViewModelTest {
 
     private lateinit var viewModel: AuthViewModel
     private lateinit var repository: AuthRepository
-    private val testDispatcher = StandardTestDispatcher()
+    private val testDispatcher = UnconfinedTestDispatcher()
 
     @Before
     fun setup() {
@@ -60,9 +60,9 @@ class AuthViewModelTest {
 
     @Test
     fun `onEmailChange updates email and clears errors`() {
-        viewModel.onEmailChange("john@example.com")
+        viewModel.onEmailChange("john@lunexa.app")
 
-        assertEquals("john@example.com", viewModel.uiState.value.email)
+        assertEquals("john@lunexa.app", viewModel.uiState.value.email)
         assertNull(viewModel.uiState.value.errorMessage)
     }
 
@@ -95,7 +95,7 @@ class AuthViewModelTest {
     fun `onVerificationCodeChange filters to digits only and limits to 6`() {
         viewModel.onVerificationCodeChange("a1b2c3d4")
 
-        assertEquals("123", viewModel.uiState.value.verificationCode)
+        assertEquals("1234", viewModel.uiState.value.verificationCode)
         assertNull(viewModel.uiState.value.errorMessage)
     }
 
@@ -110,7 +110,7 @@ class AuthViewModelTest {
     fun `onPasswordResetCodeChange filters to digits only and limits to 6`() {
         viewModel.onPasswordResetCodeChange("x9y8z7w6")
 
-        assertEquals("987", viewModel.uiState.value.passwordResetCode)
+        assertEquals("9876", viewModel.uiState.value.passwordResetCode)
     }
 
     // ============== Mode Toggle Tests ==============
@@ -132,7 +132,7 @@ class AuthViewModelTest {
     fun `toggleMode clears all verification state`() {
         viewModel.apply {
             onFullNameChange("John")
-            onEmailChange("john@example.com")
+            onEmailChange("john@lunexa.app")
         }
 
         viewModel.toggleMode()
@@ -174,7 +174,7 @@ class AuthViewModelTest {
 
     @Test
     fun `submit in login mode with short password shows error`() {
-        viewModel.onEmailChange("john@example.com")
+        viewModel.onEmailChange("john@lunexa.app")
         viewModel.onPasswordChange("short")
         viewModel.submit()
 
@@ -185,7 +185,7 @@ class AuthViewModelTest {
     fun `submit in register mode with short name shows error`() {
         viewModel.toggleMode()
         viewModel.onFullNameChange("J")
-        viewModel.onEmailChange("john@example.com")
+        viewModel.onEmailChange("john@lunexa.app")
         viewModel.onPasswordChange("Password123!")
         viewModel.submit()
 
@@ -196,7 +196,7 @@ class AuthViewModelTest {
     fun `submit in register mode with blocked name shows error`() {
         viewModel.toggleMode()
         viewModel.onFullNameChange("admin")
-        viewModel.onEmailChange("admin@example.com")
+        viewModel.onEmailChange("admin@lunexa.app")
         viewModel.onPasswordChange("Password123!")
         viewModel.submit()
 
@@ -218,7 +218,7 @@ class AuthViewModelTest {
     fun `submit in register mode with weak password shows error`() {
         viewModel.toggleMode()
         viewModel.onFullNameChange("John Doe")
-        viewModel.onEmailChange("john@example.com")
+        viewModel.onEmailChange("john@lunexa.app")
         viewModel.onPasswordChange("weak")
         viewModel.submit()
 
@@ -229,7 +229,7 @@ class AuthViewModelTest {
     fun `submit in register mode with password missing lowercase shows error`() {
         viewModel.toggleMode()
         viewModel.onFullNameChange("John Doe")
-        viewModel.onEmailChange("john@example.com")
+        viewModel.onEmailChange("john@lunexa.app")
         viewModel.onPasswordChange("PASSWORD123!")
         viewModel.submit()
 
@@ -240,7 +240,7 @@ class AuthViewModelTest {
     fun `submit in register mode with password missing uppercase shows error`() {
         viewModel.toggleMode()
         viewModel.onFullNameChange("John Doe")
-        viewModel.onEmailChange("john@example.com")
+        viewModel.onEmailChange("john@lunexa.app")
         viewModel.onPasswordChange("password123!")
         viewModel.submit()
 
@@ -251,8 +251,8 @@ class AuthViewModelTest {
     fun `submit in register mode with password missing digit shows error`() {
         viewModel.toggleMode()
         viewModel.onFullNameChange("John Doe")
-        viewModel.onEmailChange("john@example.com")
-        viewModel.onPasswordChange("Password!")
+        viewModel.onEmailChange("john@lunexa.app")
+        viewModel.onPasswordChange("Password!!")
         viewModel.submit()
 
         assertEquals("Password needs a number.", viewModel.uiState.value.errorMessage)
@@ -262,7 +262,7 @@ class AuthViewModelTest {
     fun `submit in register mode with password missing symbol shows error`() {
         viewModel.toggleMode()
         viewModel.onFullNameChange("John Doe")
-        viewModel.onEmailChange("john@example.com")
+        viewModel.onEmailChange("john@lunexa.app")
         viewModel.onPasswordChange("Password123")
         viewModel.submit()
 
@@ -277,19 +277,19 @@ class AuthViewModelTest {
             repository.startEmailVerification(any(), any(), any())
         } returns EmailVerificationPayloadDto(
             verificationId = "verify-123",
-            email = "john@example.com",
+            email = "john@lunexa.app",
             expiresInSeconds = 600
         )
 
         viewModel.toggleMode()
         viewModel.onFullNameChange("John Doe")
-        viewModel.onEmailChange("john@example.com")
+        viewModel.onEmailChange("john@lunexa.app")
         viewModel.onPasswordChange("Password123!")
         viewModel.submit()
 
-        coVerify { repository.startEmailVerification("John Doe", "john@example.com", "Password123!") }
+        coVerify { repository.startEmailVerification("John Doe", "john@lunexa.app", "Password123!") }
         assertEquals("verify-123", viewModel.uiState.value.emailVerificationId)
-        assertEquals("john@example.com", viewModel.uiState.value.verificationEmail)
+        assertEquals("john@lunexa.app", viewModel.uiState.value.verificationEmail)
     }
 
     @Test
@@ -298,14 +298,14 @@ class AuthViewModelTest {
 
         viewModel.toggleMode()
         viewModel.onFullNameChange("John Doe")
-        viewModel.onEmailChange("john@example.com")
+        viewModel.onEmailChange("john@lunexa.app")
         viewModel.onPasswordChange("Password123!")
 
         // Set verification state manually
         viewModel.apply {
             _uiState.value = _uiState.value.copy(
                 emailVerificationId = "verify-123",
-                verificationEmail = "john@example.com"
+                verificationEmail = "john@lunexa.app"
             )
         }
 
@@ -315,7 +315,7 @@ class AuthViewModelTest {
         coVerify {
             repository.register(
                 fullName = "John Doe",
-                email = "john@example.com",
+                email = "john@lunexa.app",
                 password = "Password123!",
                 emailVerificationId = "verify-123",
                 emailVerificationCode = "123456"
@@ -326,10 +326,13 @@ class AuthViewModelTest {
     @Test
     fun `submit in register mode with invalid verification code shows error`() {
         viewModel.toggleMode()
+        viewModel.onFullNameChange("John Doe")
+        viewModel.onEmailChange("john@lunexa.app")
+        viewModel.onPasswordChange("Password123!")
         viewModel.apply {
             _uiState.value = _uiState.value.copy(
                 emailVerificationId = "verify-123",
-                verificationEmail = "john@example.com"
+                verificationEmail = "john@lunexa.app"
             )
         }
 
@@ -345,11 +348,11 @@ class AuthViewModelTest {
     fun `submit in login mode with valid credentials calls login`() = runTest {
         coEvery { repository.login(any(), any()) } returns Unit
 
-        viewModel.onEmailChange("john@example.com")
+        viewModel.onEmailChange("john@lunexa.app")
         viewModel.onPasswordChange("Password123!")
         viewModel.submit()
 
-        coVerify { repository.login("john@example.com", "Password123!") }
+        coVerify { repository.login("john@lunexa.app", "Password123!") }
     }
 
     // ============== Password Reset Tests ==============
@@ -369,16 +372,16 @@ class AuthViewModelTest {
             repository.startPasswordReset(any())
         } returns PasswordResetPayloadDto(
             resetId = "reset-123",
-            email = "john@example.com",
+            email = "john@lunexa.app",
             expiresInSeconds = 600,
             message = "Reset code sent"
         )
 
         viewModel.showPasswordReset()
-        viewModel.onEmailChange("john@example.com")
+        viewModel.onEmailChange("john@lunexa.app")
         viewModel.submit()
 
-        coVerify { repository.startPasswordReset("john@example.com") }
+        coVerify { repository.startPasswordReset("john@lunexa.app") }
         assertEquals("reset-123", viewModel.uiState.value.passwordResetId)
     }
 
@@ -390,11 +393,11 @@ class AuthViewModelTest {
         viewModel.apply {
             _uiState.value = _uiState.value.copy(
                 passwordResetId = "reset-123",
-                passwordResetEmail = "john@example.com"
+                passwordResetEmail = "john@lunexa.app"
             )
         }
 
-        viewModel.onEmailChange("john@example.com")
+        viewModel.onEmailChange("john@lunexa.app")
         viewModel.onPasswordResetCodeChange("123456")
         viewModel.onNewPasswordChange("NewPassword123!")
         viewModel.onConfirmNewPasswordChange("NewPassword123!")
@@ -403,7 +406,7 @@ class AuthViewModelTest {
         coVerify {
             repository.confirmPasswordReset(
                 resetId = "reset-123",
-                email = "john@example.com",
+                email = "john@lunexa.app",
                 code = "123456",
                 newPassword = "NewPassword123!"
             )
@@ -413,10 +416,11 @@ class AuthViewModelTest {
     @Test
     fun `submit in password reset mode with mismatched passwords shows error`() {
         viewModel.showPasswordReset()
+        viewModel.onEmailChange("john@lunexa.app")
         viewModel.apply {
             _uiState.value = _uiState.value.copy(
                 passwordResetId = "reset-123",
-                passwordResetEmail = "john@example.com"
+                passwordResetEmail = "john@lunexa.app"
             )
         }
 
@@ -436,17 +440,17 @@ class AuthViewModelTest {
             repository.startEmailVerification(any(), any(), any())
         } returns EmailVerificationPayloadDto(
             verificationId = "verify-456",
-            email = "jane@example.com",
+            email = "jane@lunexa.app",
             expiresInSeconds = 600
         )
 
         viewModel.toggleMode()
         viewModel.onFullNameChange("Jane Doe")
-        viewModel.onEmailChange("jane@example.com")
+        viewModel.onEmailChange("jane@lunexa.app")
         viewModel.onPasswordChange("Password123!")
         viewModel.resendVerificationCode()
 
-        coVerify { repository.startEmailVerification("Jane Doe", "jane@example.com", "Password123!") }
+        coVerify { repository.startEmailVerification("Jane Doe", "jane@lunexa.app", "Password123!") }
     }
 
     @Test
@@ -455,16 +459,16 @@ class AuthViewModelTest {
             repository.startPasswordReset(any())
         } returns PasswordResetPayloadDto(
             resetId = "reset-456",
-            email = "jane@example.com",
+            email = "jane@lunexa.app",
             expiresInSeconds = 600,
             message = "New reset code sent"
         )
 
         viewModel.showPasswordReset()
-        viewModel.onEmailChange("jane@example.com")
+        viewModel.onEmailChange("jane@lunexa.app")
         viewModel.resendPasswordResetCode()
 
-        coVerify { repository.startPasswordReset("jane@example.com") }
+        coVerify { repository.startPasswordReset("jane@lunexa.app") }
     }
 
     // ============== State Computed Properties Tests ==============
@@ -521,7 +525,7 @@ class AuthViewModelTest {
     fun `submit handles repository error gracefully`() = runTest {
         coEvery { repository.login(any(), any()) } throws Exception("Network error")
 
-        viewModel.onEmailChange("john@example.com")
+        viewModel.onEmailChange("john@lunexa.app")
         viewModel.onPasswordChange("Password123!")
         viewModel.submit()
 

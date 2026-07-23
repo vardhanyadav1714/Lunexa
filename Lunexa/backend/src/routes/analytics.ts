@@ -1,20 +1,38 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { requireAuth } from "../auth/middleware";
 import { first, getSql, toMoney } from "../db";
 import type { Env, AppVariables } from "../env";
 import { ok } from "../response";
-import { requiredQuery } from "../validation";
+import { parseQuery } from "../validation";
 
 export const analyticsRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
+
+const uuidSchema = z.string().uuid();
+const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+
+const monthlySummaryQuerySchema = z.object({
+  month: monthSchema,
+  accountId: uuidSchema.optional(),
+});
+
+const categorySummaryQuerySchema = monthlySummaryQuerySchema.extend({
+  type: z.enum(["INCOME", "EXPENSE"]).default("EXPENSE"),
+});
 
 analyticsRoutes.use("*", requireAuth);
 
 analyticsRoutes.get("/monthly-summary", async (c) => {
   const user = c.get("user");
-  const month = requiredQuery(c.req.query("month"), "month");
-  const accountId = c.req.query("accountId");
+  const query = parseQuery(
+    {
+      month: c.req.query("month"),
+      accountId: c.req.query("accountId"),
+    },
+    monthlySummaryQuerySchema,
+  );
   const sql = getSql(c.env);
-  const monthStart = `${month}-01`;
+  const monthStart = `${query.month}-01`;
 
   const rows = await sql`
     WITH tx AS (
@@ -24,7 +42,7 @@ analyticsRoutes.get("/monthly-summary", async (c) => {
         AND deleted_at IS NULL
         AND transaction_date >= ${monthStart}::date
         AND transaction_date < (${monthStart}::date + interval '1 month')
-        AND (${accountId ?? null}::uuid IS NULL OR account_id = ${accountId ?? null}::uuid)
+        AND (${query.accountId ?? null}::uuid IS NULL OR account_id = ${query.accountId ?? null}::uuid)
     ),
     budget_totals AS (
       SELECT
@@ -62,7 +80,7 @@ analyticsRoutes.get("/monthly-summary", async (c) => {
   const utilization = budgetedAmount > 0 ? (expenseTotal / budgetedAmount) * 100 : 0;
 
   return ok(c, {
-    month,
+    month: query.month,
     currency: "INR",
     incomeTotal: toMoney(incomeTotal),
     expenseTotal: toMoney(expenseTotal),
@@ -88,11 +106,16 @@ analyticsRoutes.get("/monthly-summary", async (c) => {
 
 analyticsRoutes.get("/category-summary", async (c) => {
   const user = c.get("user");
-  const month = requiredQuery(c.req.query("month"), "month");
-  const accountId = c.req.query("accountId");
-  const type = c.req.query("type") ?? "EXPENSE";
+  const query = parseQuery(
+    {
+      month: c.req.query("month"),
+      accountId: c.req.query("accountId"),
+      type: c.req.query("type"),
+    },
+    categorySummaryQuerySchema,
+  );
   const sql = getSql(c.env);
-  const monthStart = `${month}-01`;
+  const monthStart = `${query.month}-01`;
 
   const rows = await sql`
     WITH category_totals AS (
@@ -111,7 +134,7 @@ analyticsRoutes.get("/category-summary", async (c) => {
        AND t.deleted_at IS NULL
        AND t.transaction_date >= ${monthStart}::date
        AND t.transaction_date < (${monthStart}::date + interval '1 month')
-       AND (${accountId ?? null}::uuid IS NULL OR t.account_id = ${accountId ?? null}::uuid)
+       AND (${query.accountId ?? null}::uuid IS NULL OR t.account_id = ${query.accountId ?? null}::uuid)
       LEFT JOIN budgets b
         ON b.category_id = c.id
        AND b.user_id = c.user_id
@@ -119,7 +142,7 @@ analyticsRoutes.get("/category-summary", async (c) => {
        AND b.period_month = ${monthStart}::date
       WHERE c.user_id = ${user.id}
         AND c.deleted_at IS NULL
-        AND c.type = ${type}
+        AND c.type = ${query.type}
       GROUP BY c.id, c.name, c.icon_key, c.color_hex
     ),
     grand_total AS (
@@ -145,9 +168,9 @@ analyticsRoutes.get("/category-summary", async (c) => {
   `;
 
   return ok(c, {
-    month,
+    month: query.month,
     currency: "INR",
-    type,
+    type: query.type,
     categories: rows.map((row) => {
       const totalAmount = Number(row.total_amount ?? 0);
       const budgetAmount = Number(row.budget_amount ?? 0);
